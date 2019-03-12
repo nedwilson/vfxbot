@@ -38,7 +38,7 @@ g_ihdb = None
 g_proddb = None
 
 def init_logging():
-    global g_log, g_ihdb, g_proddb
+    global g_log
     homedir = os.path.expanduser('~')
     logfile = ""
     if sys.platform == 'win32':
@@ -63,13 +63,11 @@ def init_logging():
     consoleHandler = logging.StreamHandler()
     consoleHandler.setFormatter(logFormatter)
     g_log.addHandler(consoleHandler)
-    g_ihdb.set_logger_object(g_log)
-    g_proddb.set_logger_object(g_log)
 
 def globals_from_config():
     global g_config, g_nuke_exe_path, g_show_code, g_shot_scope_regexp, g_sequence_scope_regexp, g_show_scope_regexp, \
         g_production_project_id, g_ihdb, g_proddb, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
-        g_inhouse_project_id
+        g_inhouse_project_id, g_log
     config_file = os.environ['IH_SHOW_CFG_PATH']
     g_show_code = os.environ['IH_SHOW_CODE']
     g_config = ConfigParser.ConfigParser()
@@ -83,8 +81,8 @@ def globals_from_config():
     g_production_shot_tree = g_config.get('vfxbot', 'production_shot_tree')
     g_inhouse_shot_tree = g_config.get('vfxbot', 'inhouse_shot_tree')
     g_inhouse_project_id = int(g_config.get('database', 'shotgun_project_id'))
-    g_ihdb = DB.DBAccessGlobals.get_db_access()
-    g_proddb = DB.DBAccessGlobals.get_db_access()
+    g_ihdb = DB.DBAccessGlobals.get_db_access(m_logger_object=g_log)
+    g_proddb = DB.DBAccessGlobals.get_db_access(m_logger_object=g_log)
     g_proddb.set_project_id(g_production_project_id)
 
 
@@ -282,8 +280,8 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
     m_logger_object.info('Done.')
 
 VERSION = 'v0.0.1'
-globals_from_config()
 init_logging()
+globals_from_config()
 for i in range(g_num_threads):
     worker = Thread(target=process_vfxbot_request, args=(g_log, g_process_queue))
     worker.setDaemon(True)
