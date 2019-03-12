@@ -308,11 +308,15 @@ def handle_error_404(error):
 def lut_convert():
     global g_process_queue
     if not request.json:
-        abort(400, 'Malformed or non-existant request.')
+        abort(400, 'Malformed or non-existant request. A valid POST request will have a filepath parameter, which is '
+                   'the path to an image sequence to convert, a destination_lut_format parameter, which is the file '
+                   'format of the converted LUT, and an optional parameter overwrite. Default for overwrite is True. '
+                   'Example: {"filepath":"/path/to/file/lut.cube", "destination_lut_format" : "csp", "overwrite" : '
+                   '"True"}')
     if not 'filepath' in request.json:
-        abort(400, 'filepath must be provided in POST request.')
+        abort(400, 'filepath parameter must be provided in POST request. Example: "filepath" : "/path/to/file/lut.cube"')
     if not 'destination_lut_format' in request.json:
-        abort(400, 'destination_lut_format must be provided in POST request.')
+        abort(400, 'destination_lut_format parameter must be provided in POST request. Example: "destination_lut_format" : "csp"')
     b_overwrite = True
     if 'overwrite' in request.json:
         if request.json['overwrite'] == 'False':
@@ -339,15 +343,12 @@ def transcode_plate():
         g_sequence_scope_regexp, g_show_scope_regexp, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
         g_production_project_id, g_inhouse_project_id
     if not request.json:
-        abort(400, 'Malformed or non-existant request.\n\nA valid POST request will have a filepath parameter, which '
+        abort(400, 'Malformed or non-existant request. A valid POST request will have a filepath parameter, which '
                    'is the path to an image sequence to convert, and an optional parameter overwrite. Default for '
-                   'overwrite is True.\n\nExample: {"filepath":"/path/to/image/sequence.%04d.exr", "overwrite" : '
+                   'overwrite is True. Example: {"filepath":"/path/to/image/sequence.%04d.exr", "overwrite" : '
                    '"True"}')
     if not 'filepath' in request.json:
-        abort(400, 'filepath must be provided in POST request.\n\nA valid POST request will have a filepath parameter, '
-                   'which is the path to an image sequence to convert, and an optional parameter overwrite. Default '
-                   'for overwrite is True.\n\nExample: {"filepath":"/path/to/image/sequence.%04d.exr", "overwrite" : '
-                   '"True"}')
+        abort(400, 'filepath parameter must be provided in POST request. Example: "filepath" : "/path/to/image/sequence.%04d.exr"')
     b_overwrite = True
     if 'overwrite' in request.json:
         if request.json['overwrite'] == 'False':
