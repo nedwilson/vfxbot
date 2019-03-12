@@ -339,9 +339,15 @@ def transcode_plate():
         g_sequence_scope_regexp, g_show_scope_regexp, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
         g_production_project_id, g_inhouse_project_id
     if not request.json:
-        abort(400, 'Malformed or non-existant request.')
+        abort(400, 'Malformed or non-existant request.\n\nA valid POST request will have a filepath parameter, which '
+                   'is the path to an image sequence to convert, and an optional parameter overwrite. Default for '
+                   'overwrite is True.\n\nExample: {"filepath":"/path/to/image/sequence.%04d.exr", "overwrite" : '
+                   '"True"}')
     if not 'filepath' in request.json:
-        abort(400, 'filepath must be provided in POST request.')
+        abort(400, 'filepath must be provided in POST request.\n\nA valid POST request will have a filepath parameter, '
+                   'which is the path to an image sequence to convert, and an optional parameter overwrite. Default '
+                   'for overwrite is True.\n\nExample: {"filepath":"/path/to/image/sequence.%04d.exr", "overwrite" : '
+                   '"True"}')
     b_overwrite = True
     if 'overwrite' in request.json:
         if request.json['overwrite'] == 'False':
