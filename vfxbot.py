@@ -67,7 +67,7 @@ def init_logging():
 def globals_from_config():
     global g_config, g_nuke_exe_path, g_show_code, g_shot_scope_regexp, g_sequence_scope_regexp, g_show_scope_regexp, \
         g_production_project_id, g_ihdb, g_proddb, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
-        g_inhouse_project_id, g_log
+        g_inhouse_project_id, g_log, g_num_threads
     config_file = os.environ['IH_SHOW_CFG_PATH']
     g_show_code = os.environ['IH_SHOW_CODE']
     g_config = ConfigParser.ConfigParser()
@@ -84,6 +84,8 @@ def globals_from_config():
     g_ihdb = DB.DBAccessGlobals.get_db_access(m_logger_object=g_log)
     g_proddb = DB.DBAccessGlobals.get_db_access(m_logger_object=g_log)
     g_proddb.set_project_id(g_production_project_id)
+    g_num_threads = int(g_config.get('vfxbot', 'number_of_threads'))
+    g_log.info('Setting up VFXBot with %d threads.'%g_num_threads)
 
 
 def _lut_convert(m_logger_object, m_data):
