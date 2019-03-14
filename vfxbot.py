@@ -174,7 +174,7 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
     fd, path = tempfile.mkstemp(suffix='.py')
     m_logger_object.info('Temporary Python script: %s'%path)
     nuke_py_interpreter = os.path.join(os.path.dirname(g_nuke_exe_path), 'python')
-    nuke_cmd_list = [g_nuke_exe_path, '--gpu', '-t', path]
+    nuke_cmd_list = [g_nuke_exe_path, '--gpu', '-c', '8G', '-t', path]
     s_delivery_template = g_config.get('delivery', 'nuke_template_%s'%sys.platform)
     try:
         with os.fdopen(fd, 'w') as tmp:
@@ -253,7 +253,7 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
             tmp.write("nuke.execute(nuke.toNode(\"%s\"),%d,%d,1,)\n" % (g_config.get('delivery', 'thumbnail_write_node'), thumb_frame, thumb_frame))
             tmp.write("nuke.executeMultiple((%s),((%d,%d,1),))\n" % (s_exec_nodes, db_version_object.g_start_frame - 1, db_version_object.g_end_frame))
 
-        save_file = os.path.join(os.path.expanduser('~'), os.path.basename(path))
+        save_file = os.path.join(os.path.expanduser('~'), 'pyscripts', os.path.basename(path))
         m_logger_object.info('Copied tmp Python script to %s'%save_file)
         shutil.copyfile(path, save_file)
         m_logger_object.info('About to execute: %s'%' '.join(nuke_cmd_list))
