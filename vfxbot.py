@@ -175,7 +175,7 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
     m_logger_object.info('Temporary Python script: %s'%path)
     nuke_py_interpreter = os.path.join(os.path.dirname(g_nuke_exe_path), 'python')
     nuke_cmd_list = [g_nuke_exe_path, '--gpu', '-c', '8G', '-t', path]
-    s_delivery_template = g_config.get('delivery', 'nuke_template_%s'%sys.platform)
+    s_delivery_template = g_config.get('vfxbot', 'nuke_template_%s'%sys.platform)
     try:
         with os.fdopen(fd, 'w') as tmp:
             tmp.write('#!%s\n\n'%nuke_py_interpreter)
