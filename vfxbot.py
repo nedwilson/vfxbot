@@ -13,6 +13,7 @@ import db_access as DB
 import re
 import glob
 import traceback
+import shutil
 
 # globals
 
@@ -252,6 +253,7 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
             tmp.write("nuke.execute(nuke.toNode(\"%s\"),%d,%d,1,)\n" % (g_config.get('delivery', 'thumbnail_write_node'), thumb_frame, thumb_frame))
             tmp.write("nuke.executeMultiple((%s),((%d,%d,1),))\n" % (s_exec_nodes, db_version_object.g_start_frame - 1, db_version_object.g_end_frame))
 
+        shutil.copyfile(path, '/tmp/save-this-out.py')
         m_logger_object.info('About to execute: %s'%' '.join(nuke_cmd_list))
         nuke_sp = subprocess.Popen(' '.join(nuke_cmd_list), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
         while nuke_sp.poll() == None:
