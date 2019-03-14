@@ -222,21 +222,29 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
             l_exec_nodes = []
             # Avid Quicktime Write Node
             tmp.write("nuke.toNode('%s').knob('disable').setValue(False)\n" % g_config.get('delivery', 'avid_write_node'))
+            if not os.path.exists(os.path.dirname(db_version_object.g_path_to_dnxhd)):
+                os.makedirs(os.path.dirname(db_version_object.g_path_to_dnxhd))
             tmp.write("nuke.toNode('%s').knob('file').setValue('%s')\n" % (
             g_config.get('delivery', 'avid_write_node'), db_version_object.g_path_to_dnxhd))
             l_exec_nodes.append(g_config.get('delivery', 'avid_write_node'))
             # VFX Quicktime Write Node
             tmp.write("nuke.toNode('%s').knob('disable').setValue(False)\n" % g_config.get('delivery', 'vfx_write_node'))
+            if not os.path.exists(os.path.dirname(db_version_object.g_path_to_movie)):
+                os.makedirs(os.path.dirname(db_version_object.g_path_to_movie))
             tmp.write("nuke.toNode('%s').knob('file').setValue('%s')\n" % (
             g_config.get('delivery', 'vfx_write_node'), db_version_object.g_path_to_movie))
             l_exec_nodes.append(g_config.get('delivery', 'vfx_write_node'))
             # Export Quicktime Write Node
             tmp.write("nuke.toNode('%s').knob('disable').setValue(False)\n" % g_config.get('delivery', 'export_write_node'))
+            if not os.path.exists(os.path.dirname(db_version_object.g_path_to_export)):
+                os.makedirs(os.path.dirname(db_version_object.g_path_to_export))
             tmp.write("nuke.toNode('%s').knob('file').setValue('%s')\n" % (
             g_config.get('delivery', 'export_write_node'), db_version_object.g_path_to_export))
             l_exec_nodes.append(g_config.get('delivery', 'export_write_node'))
             # EXR Write Node
             tmp.write("nuke.toNode('%s').knob('disable').setValue(False)\n" % g_config.get('delivery', 'hires_write_node'))
+            if not os.path.exists(os.path.dirname(db_version_object.g_path_to_frames)):
+                os.makedirs(os.path.dirname(db_version_object.g_path_to_frames))
             tmp.write("nuke.toNode('%s').knob('file').setValue('%s')\n" % (
             g_config.get('delivery', 'hires_write_node'), db_version_object.g_path_to_frames))
             l_exec_nodes.append(g_config.get('delivery', 'hires_write_node'))
