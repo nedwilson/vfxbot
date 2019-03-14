@@ -130,7 +130,8 @@ def _lut_convert(m_logger_object, m_data):
         if nuke_sp.poll() != 0:
             m_logger_object.error('Something went wrong with Nuke.')
     finally:
-        os.remove(path)
+        # os.remove(path)
+        pass
     m_logger_object.info('Done.')
 
 def process_vfxbot_request(m_logger_object, m_process_queue):
