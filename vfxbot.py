@@ -278,7 +278,8 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
         m_logger_object.error(traceback.format_exc(sys.exc_info()))
         raise
     finally:
-        os.remove(path)
+        pass
+        # os.remove(path)
 
     m_logger_object.info('Done.')
 
