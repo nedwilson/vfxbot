@@ -254,6 +254,8 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
             # Let's make a thumbnail
             thumb_relative_path = g_config.get('thumbnails', 'shot_thumb_dir').format(pathsep = os.path.sep)
             thumb_write_path = os.path.join(request_data['delivery_base_dir'], thumb_relative_path, '%s_thumbnail.%%04d.png'%db_version_object.g_version_code)
+            if not os.path.exists(os.path.dirname(thumb_write_path)):
+                os.makedirs(os.path.dirname(thumb_write_path))
             tmp.write("nuke.toNode('%s').knob('file').setValue('%s')\n" % (
                 g_config.get('delivery', 'thumbnail_write_node'),thumb_write_path))
             thumb_frame = ((db_version_object.g_end_frame - db_version_object.g_start_frame)/2)+db_version_object.g_start_frame
