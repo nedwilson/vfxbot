@@ -14,6 +14,8 @@ import re
 import glob
 import traceback
 import shutil
+import atexit
+import pickle
 
 # globals
 
@@ -149,7 +151,31 @@ def process_vfxbot_request(m_logger_object, m_process_queue):
         m_process_queue.task_done()
 
 def _transcode_plate(m_logger_object, request_data, db_version_object, db_connection_object):
-    global g_nuke_exe_path, g_config, g_show_code
+    global g_nuke_exe_path, g_config, g_show_code, g_ihdb, g_proddb
+    # is the database object a string?
+    if isinstance(db_connection_object, str):
+        if db_connection_object == 'Production DB':
+            db_connection_object = g_proddb
+        elif db_connection_object == 'In-House DB':
+            db_connection_object = g_ihdb
+
+    # ruh-roh. Is the version object a dictionary? Get the real one.
+    if isinstance(db_version_object, dict):
+        tmp_dbid = int(db_version_object['g_dbid'])
+        if tmp_dbid == -1:
+            tmp_version_object = DB.Version('%s_ScanCheck' % db_version_object['g_version_code'], -1, 'Transcode by VFXBot', int(db_version_object['g_start_frame']),
+                                            int(db_version_object['g_end_frame']), int(db_version_object['g_duration']), db_version_object['g_path_to_frames'],
+                                            db_version_object['g_path_to_movie'], None, None, None)
+            tmp_version_object.set_path_to_dnxhd(db_version_object['g_path_to_dnxhd'])
+            tmp_version_object.set_path_to_export(db_version_object['g_path_to_export'])
+            tmp_version_object.set_version_type('Comp')
+            tmp_version_object.set_delivered(True)
+            tmp_version_object.set_status(g_config.get('delivery', 'db_delivered_status'))
+
+            db_version_object = tmp_version_object
+        else:
+            db_version_object = db_connection_object.fetch_version_from_id(tmp_dbid)
+
     m_logger_object.debug('Inside _transcode_plate()')
     m_logger_object.debug('Destination Version Object:')
     m_logger_object.debug(db_version_object)
@@ -170,6 +196,8 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
             return
     else:
         m_logger_object.info('Boolean overwrite is set to True, will proceed even if file exists at destination.')
+
+
     m_logger_object.info('Transcoding plate at %s'%db_version_object.g_path_to_frames)
     fd, path = tempfile.mkstemp(suffix='.py')
     m_logger_object.info('Temporary Python script: %s'%path)
@@ -297,9 +325,53 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
 
     m_logger_object.info('Done.')
 
-VERSION = 'v0.0.1'
+VERSION = 'v0.0.2'
 init_logging()
 globals_from_config()
+q_shutdown_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vfxbot_process_queue.pickle')
+# recover from previous shutdown
+if os.path.exists(q_shutdown_filepath):
+    g_log.info('Serialized queue file exists at %s!'%q_shutdown_filepath)
+    with open(q_shutdown_filepath, 'rb') as handle:
+        tmp_queue = pickle.load(handle)
+    for vfxbot_request_tmp in tmp_queue:
+        try:
+            db = None
+            if vfxbot_request_tmp['db_connection_object'] == 'Production DB':
+                vfxbot_request_tmp['db_connection_object'] = g_proddb
+                db = g_proddb
+            if vfxbot_request_tmp['db_connection_object'] == 'In-House DB':
+                vfxbot_request_tmp['db_connection_object'] = g_ihdb
+                db = g_ihdb
+            if vfxbot_request_tmp['db_version_object']:
+                db_version_object = vfxbot_request_tmp['db_version_object']
+                tmp_dbid = int(db_version_object['g_dbid'])
+                if tmp_dbid == -1:
+                    tmp_version_object = DB.Version('%s_ScanCheck' % db_version_object['g_version_code'], -1,
+                                                    'Transcode by VFXBot', int(db_version_object['g_start_frame']),
+                                                    int(db_version_object['g_end_frame']),
+                                                    int(db_version_object['g_duration']),
+                                                    db_version_object['g_path_to_frames'],
+                                                    db_version_object['g_path_to_movie'], None, None, None)
+                    tmp_version_object.set_path_to_dnxhd(db_version_object['g_path_to_dnxhd'])
+                    tmp_version_object.set_path_to_export(db_version_object['g_path_to_export'])
+                    tmp_version_object.set_version_type('Comp')
+                    tmp_version_object.set_delivered(True)
+                    tmp_version_object.set_status(g_config.get('delivery', 'db_delivered_status'))
+
+                    db_version_object = tmp_version_object
+                else:
+                    db_version_object = db.fetch_version_from_id(tmp_dbid)
+                vfxbot_request_tmp['db_version_object'] = db_version_object
+        except KeyError:
+            pass
+        g_log.info('Adding VFXBot request with ID %s to process queue.'%id(vfxbot_request_tmp))
+        g_process_queue.put(vfxbot_request_tmp)
+
+    # delete previous shutdown serialized queue file
+    os.unlink(q_shutdown_filepath)
+
+
 for i in range(g_num_threads):
     worker = Thread(target=process_vfxbot_request, args=(g_log, g_process_queue))
     worker.setDaemon(True)
@@ -319,6 +391,88 @@ def handle_error_400(error):
 @app.errorhandler(404)
 def handle_error_404(error):
     return jsonify({'error' : error.description}), 404
+
+@app.errorhandler(409)
+def handle_error_409(error):
+    return jsonify({'error' : error.description}), 409
+
+@atexit.register
+def shutdown():
+    global g_log, g_process_queue
+    g_log.warning('Inside shutdown() method')
+    current_queue = list(g_process_queue.queue)
+    for vfxbot_request_tmp in current_queue:
+        if not vfxbot_request_tmp['overwrite']:
+            g_log.info('Setting overwrite = true for request with id %s.'%id(vfxbot_request_tmp))
+            vfxbot_request_tmp['overwrite'] = True
+        try:
+            if vfxbot_request_tmp['db_connection_object'] == g_proddb:
+                vfxbot_request_tmp['db_connection_object'] = 'Production DB'
+            if vfxbot_request_tmp['db_connection_object'] == g_ihdb:
+                vfxbot_request_tmp['db_connection_object'] = 'In-House DB'
+            if vfxbot_request_tmp['db_version_object']:
+                vfxbot_request_tmp['db_version_object'] = vfxbot_request_tmp['db_version_object'].data
+        except KeyError:
+            pass
+
+    q_shutdown_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vfxbot_process_queue.pickle')
+    g_log.info('About to serialize the VFXBot process queue to the following file:')
+    g_log.info(q_shutdown_filepath)
+    with open(q_shutdown_filepath, 'wb') as handle:
+        pickle.dump(current_queue, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+@app.route('/vfxbot/list_queue', methods=['GET'])
+def list_queue():
+    global g_process_queue, g_log, g_proddb, g_ihdb
+    local_queue = list(g_process_queue.queue)
+    queue_list_dict = {}
+    for vfxbot_request_tmp in local_queue:
+        queue_list_dict[id(vfxbot_request_tmp)] = vfxbot_request_tmp
+        try:
+            if vfxbot_request_tmp['db_connection_object'] == g_proddb:
+                vfxbot_request_tmp['db_connection_object'] = 'Production DB'
+            if vfxbot_request_tmp['db_connection_object'] == g_ihdb:
+                vfxbot_request_tmp['db_connection_object'] = 'In-House DB'
+            if vfxbot_request_tmp['db_version_object']:
+                vfxbot_request_tmp['db_version_object'] = vfxbot_request_tmp['db_version_object'].data
+        except KeyError:
+            pass
+    if len(local_queue) == 0:
+        return jsonify({'info' : 'Hooray! No more processing left to do!'}), 200
+    else:
+        return jsonify(queue_list_dict), 200
+
+@app.route('/vfxbot/delete_requests', methods=['POST'])
+def delete_requests():
+    global g_process_queue, g_log
+    if not request.json:
+        abort(400, 'Malformed or non-existant request. A valid POST request will have an objectids parameter, which is'
+                   'a list of object IDs to remove from the process queue.')
+
+    if not 'objectids' in request.json:
+        abort(400, 'objectids parameter must be provided as a list in the request.')
+
+    objectids = request.json['objectids']
+    g_log.info('Inside delete_requests() method. Object IDs provided in POST request: %s'%str(objectids))
+    # new queue objects
+    new_queue = []
+    current_queue = list(g_process_queue.queue)
+    for vfxbot_request_tmp in current_queue:
+        if id(vfxbot_request_tmp) not in [int(x) for x in objectids]:
+            new_queue.append(vfxbot_request_tmp)
+    if len(new_queue) == len(current_queue):
+        g_log.warning('No objects found matching %s.' % str(objectids))
+        return jsonify({'warning': 'No objects found matching %s.' % str(objectids)}), 200
+
+    g_process_queue = Queue.Queue()
+    g_process_queue.queue.clear()
+    for q_item in new_queue:
+        g_process_queue.put(q_item)
+
+    g_log.info('Successfully removed objects from process queue in list %s.'%str(objectids))
+    return jsonify({'info' : 'Successfully removed object IDs %s from VFXBot process queue.'%str(objectids)}), 200
+
 
 @app.route('/vfxbot/lut_convert', methods=['POST'])
 def lut_convert():
@@ -350,6 +504,15 @@ def lut_convert():
     filebase = os.path.splitext(filepath)[0]
     converted_lut = '.'.join([filebase, destination_lut_format])
     vfxbot_request = {'type' : 'lut_convert', 'data' : {'source_lut_file': filepath, 'destination_lut_file' : converted_lut, 'destination_lut_format' : destination_lut_format, 'overwrite' : b_overwrite}}
+    b_queue_found = False
+    # check to be sure this exact request isn't already in the process queue
+    for vfxbot_request_tmp in list(g_process_queue.queue):
+        if vfxbot_request_tmp == vfxbot_request:
+            b_queue_found = True
+            break
+    if b_queue_found:
+        abort(409, 'Request to transcode %s already in process queue.'%filepath)
+
     g_process_queue.put(vfxbot_request)
     return jsonify(vfxbot_request['data']), 200
 
@@ -528,6 +691,14 @@ def transcode_plate():
                                                             'delivery_base_dir' : delivery_base_dir },
                       'db_version_object' : transcode_version_obj,
                       'db_connection_object' : db }
+    b_queue_found = False
+    # check to be sure this exact request isn't already in the process queue
+    for vfxbot_request_tmp in list(g_process_queue.queue):
+        if vfxbot_request_tmp == vfxbot_request:
+            b_queue_found = True
+            break
+    if b_queue_found:
+        abort(409, 'Request to transcode %s already in process queue.'%filepath)
     g_process_queue.put(vfxbot_request)
     return jsonify(vfxbot_request['data']), 200
 
