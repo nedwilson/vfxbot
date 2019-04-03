@@ -16,6 +16,7 @@ import traceback
 import shutil
 import atexit
 import pickle
+import copy
 
 # globals
 
@@ -161,20 +162,9 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
 
     # ruh-roh. Is the version object a dictionary? Get the real one.
     if isinstance(db_version_object, dict):
-        tmp_dbid = int(db_version_object['g_dbid'])
-        if tmp_dbid == -1:
-            tmp_version_object = DB.Version('%s_ScanCheck' % db_version_object['g_version_code'], -1, 'Transcode by VFXBot', int(db_version_object['g_start_frame']),
-                                            int(db_version_object['g_end_frame']), int(db_version_object['g_duration']), db_version_object['g_path_to_frames'],
-                                            db_version_object['g_path_to_movie'], None, None, None)
-            tmp_version_object.set_path_to_dnxhd(db_version_object['g_path_to_dnxhd'])
-            tmp_version_object.set_path_to_export(db_version_object['g_path_to_export'])
-            tmp_version_object.set_version_type('Comp')
-            tmp_version_object.set_delivered(True)
-            tmp_version_object.set_status(g_config.get('delivery', 'db_delivered_status'))
-
-            db_version_object = tmp_version_object
-        else:
-            db_version_object = db_connection_object.fetch_version_from_id(tmp_dbid)
+        tmp_version_object = DB.Version()
+        tmp_version_object.populate_from_dictionary(db_version_object)
+        db_version_object = tmp_version_object
 
     m_logger_object.debug('Inside _transcode_plate()')
     m_logger_object.debug('Destination Version Object:')
@@ -345,23 +335,9 @@ if os.path.exists(q_shutdown_filepath):
                 db = g_ihdb
             if vfxbot_request_tmp['db_version_object']:
                 db_version_object = vfxbot_request_tmp['db_version_object']
-                tmp_dbid = int(db_version_object['g_dbid'])
-                if tmp_dbid == -1:
-                    tmp_version_object = DB.Version('%s_ScanCheck' % db_version_object['g_version_code'], -1,
-                                                    'Transcode by VFXBot', int(db_version_object['g_start_frame']),
-                                                    int(db_version_object['g_end_frame']),
-                                                    int(db_version_object['g_duration']),
-                                                    db_version_object['g_path_to_frames'],
-                                                    db_version_object['g_path_to_movie'], None, None, None)
-                    tmp_version_object.set_path_to_dnxhd(db_version_object['g_path_to_dnxhd'])
-                    tmp_version_object.set_path_to_export(db_version_object['g_path_to_export'])
-                    tmp_version_object.set_version_type('Comp')
-                    tmp_version_object.set_delivered(True)
-                    tmp_version_object.set_status(g_config.get('delivery', 'db_delivered_status'))
-
-                    db_version_object = tmp_version_object
-                else:
-                    db_version_object = db.fetch_version_from_id(tmp_dbid)
+                tmp_version_object = DB.Version()
+                tmp_version_object.populate_from_dictionary(db_version_object)
+                db_version_object = tmp_version_object
                 vfxbot_request_tmp['db_version_object'] = db_version_object
         except KeyError:
             pass
@@ -411,7 +387,10 @@ def shutdown():
             if vfxbot_request_tmp['db_connection_object'] == g_ihdb:
                 vfxbot_request_tmp['db_connection_object'] = 'In-House DB'
             if vfxbot_request_tmp['db_version_object']:
-                vfxbot_request_tmp['db_version_object'] = vfxbot_request_tmp['db_version_object'].data
+                if isinstance(vfxbot_request_tmp['db_version_object'], DB.Version):
+                    vfxbot_request_tmp['db_version_object'] = vfxbot_request_tmp['db_version_object'].data
+                else:
+                    vfxbot_request_tmp['db_version_object'] = vfxbot_request_tmp['db_version_object']
         except KeyError:
             pass
 
@@ -428,14 +407,15 @@ def list_queue():
     local_queue = list(g_process_queue.queue)
     queue_list_dict = {}
     for vfxbot_request_tmp in local_queue:
-        queue_list_dict[id(vfxbot_request_tmp)] = vfxbot_request_tmp
+        vfxbot_request_tmp_copy = copy.copy(vfxbot_request_tmp)
+        queue_list_dict[id(vfxbot_request_tmp)] = vfxbot_request_tmp_copy
         try:
             if vfxbot_request_tmp['db_connection_object'] == g_proddb:
-                vfxbot_request_tmp['db_connection_object'] = 'Production DB'
+                vfxbot_request_tmp_copy['db_connection_object'] = 'Production DB'
             if vfxbot_request_tmp['db_connection_object'] == g_ihdb:
-                vfxbot_request_tmp['db_connection_object'] = 'In-House DB'
+                vfxbot_request_tmp_copy['db_connection_object'] = 'In-House DB'
             if vfxbot_request_tmp['db_version_object']:
-                vfxbot_request_tmp['db_version_object'] = vfxbot_request_tmp['db_version_object'].data
+                vfxbot_request_tmp_copy['db_version_object'] = copy.copy(vfxbot_request_tmp['db_version_object'].data)
         except KeyError:
             pass
     if len(local_queue) == 0:
@@ -465,7 +445,6 @@ def delete_requests():
         g_log.warning('No objects found matching %s.' % str(objectids))
         return jsonify({'warning': 'No objects found matching %s.' % str(objectids)}), 200
 
-    g_process_queue = Queue.Queue()
     g_process_queue.queue.clear()
     for q_item in new_queue:
         g_process_queue.put(q_item)
