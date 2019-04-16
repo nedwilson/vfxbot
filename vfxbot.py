@@ -17,6 +17,8 @@ import shutil
 import atexit
 import pickle
 import copy
+import pprint
+import socket
 
 # globals
 
@@ -38,8 +40,89 @@ g_image_extensions = []
 g_production_shot_tree = None
 g_inhouse_shot_tree = None
 
+# email stuff
+
+g_email_server = None
+g_email_port = -1
+g_email_password = None
+g_email_useTLS = False
+g_email_username = None
+g_email_from = None
+g_email_to = None
+g_email_subject = None
+
 g_ihdb = None
 g_proddb = None
+
+class CustomSMTPHandler(logging.handlers.SMTPHandler):
+    """
+    A custom SMTPHandler subclass that will adapt it's subject depending on the
+    error severity.
+    """
+
+    LEVEL_SUBJECTS = {
+        logging.ERROR: 'ERROR - VFXBot',
+        logging.CRITICAL: 'CRITICAL - VFXBot',
+    }
+
+    def __init__(self, smtpServer, fromAddr, toAddrs, emailSubject, credentials=None, secure=None):
+        args = [smtpServer, fromAddr, toAddrs, emailSubject]
+        if credentials:
+            args.append(credentials)
+            args.append(secure)
+
+        logging.handlers.SMTPHandler.__init__(self, *args)
+
+    def getSubject(self, record):
+        subject = logging.handlers.SMTPHandler.getSubject(self, record)
+        if record.levelno in self.LEVEL_SUBJECTS:
+            return subject + ' ' + self.LEVEL_SUBJECTS[record.levelno]
+        return subject
+
+    def emit(self, record):
+        """
+        Emit a record.
+
+        Format the record and send it to the specified addressees.
+        """
+        # If the socket timeout isn't None, in Python 2.4 the socket read
+        # following enabling starttls() will hang. The default timeout will
+        # be reset to 60 later in 2 locations because Python 2.4 doesn't support
+        # except and finally in the same try block.
+        socket.setdefaulttimeout(None)
+
+        # Mostly copied from Python 2.7 implementation.
+        # Using email.Utils instead of email.utils for 2.4 compat.
+        try:
+            import smtplib
+            from email.Utils import formatdate
+            port = self.mailport
+            if not port:
+                port = smtplib.SMTP_PORT
+            smtp = smtplib.SMTP()
+            smtp.connect(self.mailhost, port)
+            msg = self.format(record)
+            msg = "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\n\r\n%s" % (
+                            self.fromaddr,
+                            ",".join(self.toaddrs),
+                            self.getSubject(record),
+                            formatdate(), msg)
+            if self.username:
+                if self.secure is not None:
+                    smtp.ehlo()
+                    smtp.starttls(*self.secure)
+                    smtp.ehlo()
+                smtp.login(self.username, self.password)
+            smtp.sendmail(self.fromaddr, self.toaddrs, msg)
+            smtp.close()
+        except (KeyboardInterrupt, SystemExit):
+            socket.setdefaulttimeout(60)
+            raise
+        except:
+            self.handleError(record)
+
+        socket.setdefaulttimeout(60)
+
 
 def init_logging():
     global g_log
@@ -71,7 +154,8 @@ def init_logging():
 def globals_from_config():
     global g_config, g_nuke_exe_path, g_show_code, g_shot_scope_regexp, g_sequence_scope_regexp, g_show_scope_regexp, \
         g_production_project_id, g_ihdb, g_proddb, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
-        g_inhouse_project_id, g_log, g_num_threads
+        g_inhouse_project_id, g_log, g_num_threads, g_email_server, g_email_port, g_email_port, g_email_useTLS, \
+        g_email_username, g_email_from, g_email_to, g_email_subject, g_email_password
     config_file = os.environ['IH_SHOW_CFG_PATH']
     g_show_code = os.environ['IH_SHOW_CODE']
     g_config = ConfigParser.ConfigParser()
@@ -89,6 +173,21 @@ def globals_from_config():
     g_proddb = DB.DBAccessGlobals.get_db_access(m_logger_object=g_log)
     g_proddb.set_project_id(g_production_project_id)
     g_num_threads = int(g_config.get('vfxbot', 'number_of_threads'))
+    # email stuff
+
+    g_email_server = g_config.get('vfxbot', 'server')
+    g_email_port = int(g_config.get('vfxbot', 'port'))
+    g_email_useTLS = True if g_config.get('vfxbot', 'useTLS') in ['Y', 'y', 'YES', 'yes', 'Yes', 'T', 't', 'True', 'TRUE', 'true'] else False
+    g_email_username = g_config.get('vfxbot', 'username')
+    g_email_password = g_config.get('vfxbot', 'password')
+    # The from address that should be used in emails.
+    g_email_from = g_config.get('vfxbot', 'from')
+    # A comma delimited list of email addresses to whom these alerts should be sent.
+    g_email_to = g_config.get('vfxbot', 'to')
+    # An email subject prefix that can be used by mail clients to help sort out
+    # alerts sent by the Shotgun event framework.
+    g_email_subject = g_config.get('vfxbot', 'subject')
+
     g_log.info('Setting up VFXBot with %d threads.'%g_num_threads)
 
 
@@ -141,15 +240,25 @@ def _lut_convert(m_logger_object, m_data):
 def process_vfxbot_request(m_logger_object, m_process_queue):
     m_logger_object.info('VFXBot Process Request thread initialized.')
     while True:
-        request = m_process_queue.get()
-        request_type = request['type']
-        request_data = request['data']
-        m_logger_object.info('Received request %s.'%request_type)
-        if request_type == 'lut_convert':
-            _lut_convert(m_logger_object, request_data)
-        elif request_type == 'transcode_plate':
-            _transcode_plate(m_logger_object, request_data, request['db_version_object'], request['db_connection_object'])
-        m_process_queue.task_done()
+        try:
+            request = m_process_queue.get()
+            request_type = request['type']
+            request_data = request['data']
+            m_logger_object.info('Received request %s.'%request_type)
+            if request_type == 'lut_convert':
+                _lut_convert(m_logger_object, request_data)
+            elif request_type == 'transcode_plate':
+                _transcode_plate(m_logger_object, request_data, request['db_version_object'], request['db_connection_object'])
+            m_process_queue.task_done()
+        except:
+            tb = sys.exc_info()[2]
+            stack = []
+            while tb:
+                stack.append(tb.tb_frame)
+                tb = tb.tb_next
+
+            msg = 'An error occured processing an event.\n\n%s\n\nLocal variables at outer most frame in plugin:\n\n%s'
+            m_logger_object.critical(msg, traceback.format_exc(), pprint.pformat(stack[1].f_locals))
 
 def _transcode_plate(m_logger_object, request_data, db_version_object, db_connection_object):
     global g_nuke_exe_path, g_config, g_show_code, g_ihdb, g_proddb
@@ -315,9 +424,24 @@ def _transcode_plate(m_logger_object, request_data, db_version_object, db_connec
 
     m_logger_object.info('Done.')
 
-VERSION = 'v0.0.2'
+VERSION = 'v0.0.3'
+EMAIL_FORMAT_STRING = """Time: %(asctime)s
+Logger: %(name)s
+Path: %(pathname)s
+Function: %(funcName)s
+Line: %(lineno)d
+
+%(message)s"""
 init_logging()
 globals_from_config()
+if g_email_server and g_email_from and g_email_to and g_email_subject:
+    mailHandler = CustomSMTPHandler(g_email_server, g_email_from, g_email_to, g_email_subject, (g_email_username, g_email_password), g_email_useTLS)
+    mailHandler.setLevel(logging.ERROR)
+    mailFormatter = logging.Formatter(EMAIL_FORMAT_STRING)
+    mailHandler.setFormatter(mailFormatter)
+
+    g_log.addHandler(mailHandler)
+
 q_shutdown_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vfxbot_process_queue.pickle')
 # recover from previous shutdown
 if os.path.exists(q_shutdown_filepath):
@@ -378,8 +502,12 @@ def shutdown():
     g_log.warning('Inside shutdown() method')
     current_queue = list(g_process_queue.queue)
     for vfxbot_request_tmp in current_queue:
-        if not vfxbot_request_tmp['overwrite']:
-            g_log.info('Setting overwrite = true for request with id %s.'%id(vfxbot_request_tmp))
+        try:
+            if not vfxbot_request_tmp['overwrite']:
+                g_log.info('Setting overwrite = true for request with id %s.'%id(vfxbot_request_tmp))
+                vfxbot_request_tmp['overwrite'] = True
+        except:
+            g_log.info('Setting overwrite = true for request with id %s.' % id(vfxbot_request_tmp))
             vfxbot_request_tmp['overwrite'] = True
         try:
             if vfxbot_request_tmp['db_connection_object'] == g_proddb:
