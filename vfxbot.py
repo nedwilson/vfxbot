@@ -523,10 +523,14 @@ def shutdown():
             pass
 
     q_shutdown_filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vfxbot_process_queue.pickle')
-    g_log.info('About to serialize the VFXBot process queue to the following file:')
-    g_log.info(q_shutdown_filepath)
-    with open(q_shutdown_filepath, 'wb') as handle:
-        pickle.dump(current_queue, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    if len(current_queue) > 0:
+        g_log.info('About to serialize the VFXBot process queue to the following file:')
+        g_log.info(q_shutdown_filepath)
+        with open(q_shutdown_filepath, 'wb') as handle:
+            pickle.dump(current_queue, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        g_log.info('Nothing exists in process queue currently, exiting without serialization.')
+
 
 
 @app.route('/vfxbot/list_queue', methods=['GET'])
