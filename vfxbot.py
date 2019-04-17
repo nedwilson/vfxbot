@@ -263,6 +263,8 @@ def process_vfxbot_request(m_logger_object, m_process_queue, m_thread_processing
                 tb = tb.tb_next
 
             msg = 'An error occured processing an event.\n\n%s\n\nLocal variables at outer most frame in plugin:\n\n%s'
+            # be sure to write this out as info while we are testing the email functionality
+            m_logger_object.info(msg, traceback.format_exc(), pprint.pformat(stack[1].f_locals))
             m_logger_object.critical(msg, traceback.format_exc(), pprint.pformat(stack[1].f_locals))
 
 def _transcode_plate(m_logger_object, request_data, db_version_object, db_connection_object):
