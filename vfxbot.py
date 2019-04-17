@@ -54,6 +54,8 @@ g_email_subject = None
 g_ihdb = None
 g_proddb = None
 
+g_thread_processing = {}
+
 class CustomSMTPHandler(logging.handlers.SMTPHandler):
     """
     A custom SMTPHandler subclass that will adapt it's subject depending on the
@@ -237,12 +239,15 @@ def _lut_convert(m_logger_object, m_data):
         pass
     m_logger_object.info('Done.')
 
-def process_vfxbot_request(m_logger_object, m_process_queue):
+def process_vfxbot_request(m_logger_object, m_process_queue, m_thread_processing):
     m_logger_object.info('VFXBot Process Request thread initialized.')
     while True:
         try:
             request = m_process_queue.get()
             request_type = request['type']
+            request_filepath = request['filepath']
+            m_thread_processing[0] = request_type
+            m_thread_processing[1] = request_filepath
             request_data = request['data']
             m_logger_object.info('Received request %s.'%request_type)
             if request_type == 'lut_convert':
@@ -473,7 +478,8 @@ if os.path.exists(q_shutdown_filepath):
 
 
 for i in range(g_num_threads):
-    worker = Thread(target=process_vfxbot_request, args=(g_log, g_process_queue))
+    g_thread_processing[i] = [None, None]
+    worker = Thread(target=process_vfxbot_request, args=(g_log, g_process_queue, g_thread_processing[i]))
     worker.setDaemon(True)
     worker.start()
 
@@ -587,7 +593,7 @@ def delete_requests():
 
 @app.route('/vfxbot/lut_convert', methods=['POST'])
 def lut_convert():
-    global g_process_queue
+    global g_process_queue, g_thread_processing
     if not request.json:
         abort(400, 'Malformed or non-existant request. A valid POST request will have a filepath parameter, which is '
                    'the path to an image sequence to convert, a destination_lut_format parameter, which is the file '
@@ -614,11 +620,16 @@ def lut_convert():
         abort(404, 'Unable to locate %s on the filesystem.'%filepath)
     filebase = os.path.splitext(filepath)[0]
     converted_lut = '.'.join([filebase, destination_lut_format])
-    vfxbot_request = {'type' : 'lut_convert', 'data' : {'source_lut_file': filepath, 'destination_lut_file' : converted_lut, 'destination_lut_format' : destination_lut_format, 'overwrite' : b_overwrite}}
+    vfxbot_request = {'type' : 'lut_convert', 'filepath' : filepath, 'data' : {'source_lut_file': filepath, 'destination_lut_file' : converted_lut, 'destination_lut_format' : destination_lut_format, 'overwrite' : b_overwrite}}
     b_queue_found = False
     # check to be sure this exact request isn't already in the process queue
     for vfxbot_request_tmp in list(g_process_queue.queue):
-        if vfxbot_request_tmp == vfxbot_request:
+        if vfxbot_request_tmp['filepath'] == filepath and vfxbot_request_tmp['type'] == 'lut_convert':
+            b_queue_found = True
+            break
+    for threadid in g_thread_processing.keys():
+        tmp_tp_list = g_thread_processing[threadid]
+        if tmp_tp_list[0] == 'lut_convert' and tmp_tp_list[1] == filepath:
             b_queue_found = True
             break
     if b_queue_found:
@@ -631,7 +642,7 @@ def lut_convert():
 def transcode_plate():
     global g_process_queue, g_config, g_ihdb, g_proddb, g_log, g_imgseq_regexp, g_frame_regexp, g_shot_scope_regexp, \
         g_sequence_scope_regexp, g_show_scope_regexp, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
-        g_production_project_id, g_inhouse_project_id
+        g_production_project_id, g_inhouse_project_id, g_thread_processing
     if not request.json:
         abort(400, 'Malformed or non-existant request. A valid POST request will have a filepath parameter, which '
                    'is the path to an image sequence to convert, and an optional parameter overwrite. Default for '
@@ -795,7 +806,8 @@ def transcode_plate():
                     dest_version_obj = dbversion
                     transcode_version_obj.g_dbid = dest_version_obj.g_dbid
 
-    vfxbot_request = {'type' : 'transcode_plate', 'data' : {'source_filepath': filepath, 'destination_version_id' : str(transcode_version_obj.g_dbid),
+    vfxbot_request = {'type' : 'transcode_plate', 'filepath' : filepath,
+                                                  'data' : {'source_filepath': filepath, 'destination_version_id' : str(transcode_version_obj.g_dbid),
                                                             'destination_filepath' : transcode_version_obj.g_path_to_frames,
                                                             'overwrite' : b_overwrite, 'transcode_only' : b_transcode_only,
                                                             'lut_file' : lut_file, 'show_root' : show_root, 'sequence' : sequence, 'shot' : shot,
@@ -805,9 +817,17 @@ def transcode_plate():
     b_queue_found = False
     # check to be sure this exact request isn't already in the process queue
     for vfxbot_request_tmp in list(g_process_queue.queue):
-        if vfxbot_request_tmp == vfxbot_request:
+        if vfxbot_request_tmp['filepath'] == filepath and vfxbot_request_tmp['type'] == 'transcode_plate':
+            b_queue_found = True
+            g_log.warning('File path %s already in process queue.'%filepath)
+            break
+    for threadid in g_thread_processing.keys():
+        tmp_tp_list = g_thread_processing[threadid]
+        if tmp_tp_list[0] == 'transcode_plate' and tmp_tp_list[1] == filepath:
+            g_log.warning('File path %s already being processed by Thread-%d.'%(filepath, threadid+1))
             b_queue_found = True
             break
+
     if b_queue_found:
         abort(409, 'Request to transcode %s already in process queue.'%filepath)
     g_process_queue.put(vfxbot_request)
