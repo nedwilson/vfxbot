@@ -758,6 +758,7 @@ def transcode_plate():
     hires_dest = g_config.get('vfxbot', 'hires_dest')
     frame_padding = g_config.get(g_show_code, 'write_frame_format')
     version_type = g_config.get('vfxbot', 'version_type')
+    submitted_for = g_config.get('vfxbot', 'submitted_for')
     hires_destination_path = os.path.join(delivery_base_dir, shot_delivery_folder, hires_dest.format(pathsep = os.path.sep, format = fileext, frame = frame_padding, client_version = version_name, hiresext = file_format))
     avidqt_destination_path = os.path.join(delivery_base_dir, shot_delivery_folder, avidqt_dest.format(pathsep = os.path.sep, client_version = version_name, avidqtext = avid_file_format))
     vfxqt_destination_path = os.path.join(delivery_base_dir, shot_delivery_folder, vfxqt_dest.format(pathsep = os.path.sep, client_version = version_name, vfxqtext = vfx_file_format))
@@ -767,6 +768,7 @@ def transcode_plate():
     transcode_version_obj.set_path_to_dnxhd(avidqt_destination_path)
     transcode_version_obj.set_path_to_export(exportqt_destination_path)
     transcode_version_obj.set_version_type(version_type)
+    transcode_version_obj.set_submitted_for(submitted_for)
     transcode_version_obj.set_delivered(True)
     transcode_version_obj.set_status(g_config.get('delivery', 'db_delivered_status'))
 
