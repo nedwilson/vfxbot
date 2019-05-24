@@ -72,6 +72,8 @@ class CustomSMTPHandler(logging.handlers.SMTPHandler):
         if credentials:
             args.append(credentials)
             args.append(secure)
+            self.username = credentials[0]
+            self.password = credentials[1]
 
         logging.handlers.SMTPHandler.__init__(self, *args)
 
@@ -110,9 +112,11 @@ class CustomSMTPHandler(logging.handlers.SMTPHandler):
                             self.getSubject(record),
                             formatdate(), msg)
             if self.username:
-                if self.secure is not None:
+                # if self.secure is not None:
+                if self.secure:
                     smtp.ehlo()
-                    smtp.starttls(*self.secure)
+                    # smtp.starttls(*self.secure)
+                    smtp.starttls()
                     smtp.ehlo()
                 smtp.login(self.username, self.password)
             smtp.sendmail(self.fromaddr, self.toaddrs, msg)
@@ -156,7 +160,7 @@ def init_logging():
 def globals_from_config():
     global g_config, g_nuke_exe_path, g_show_code, g_shot_scope_regexp, g_sequence_scope_regexp, g_show_scope_regexp, \
         g_production_project_id, g_ihdb, g_proddb, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
-        g_inhouse_project_id, g_log, g_num_threads, g_email_server, g_email_port, g_email_port, g_email_useTLS, \
+        g_inhouse_project_id, g_log, g_num_threads, g_email_server, g_email_port, g_email_useTLS, \
         g_email_username, g_email_from, g_email_to, g_email_subject, g_email_password
     config_file = os.environ['IH_SHOW_CFG_PATH']
     g_show_code = os.environ['IH_SHOW_CODE']
