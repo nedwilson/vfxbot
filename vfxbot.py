@@ -468,7 +468,7 @@ def _imgseq_strip(m_logger_object, request_data, db_version_object, db_connectio
         else:
             tmp_file_path = db_version_object.g_path_to_frames%db_version_object.g_start_frame
         if os.path.exists(tmp_file_path):
-            m_logger_object.info('Transcoded plate already exists at %s. Since overwrite is set to False, this will be skipped.'%tmp_file_path)
+            m_logger_object.info('Stripped image sequence already exists at %s. Since overwrite is set to False, this will be skipped.'%tmp_file_path)
             return
     else:
         m_logger_object.info('Boolean overwrite is set to True, will proceed even if file exists at destination.')
@@ -550,7 +550,7 @@ def _imgseq_strip(m_logger_object, request_data, db_version_object, db_connectio
             thumb_frame = ((db_version_object.g_end_frame - db_version_object.g_start_frame)/2)+db_version_object.g_start_frame
             tmp.write("nuke.toNode('%s').knob('disable').setValue(False)\n" % g_config.get('delivery', 'thumbnail_write_node'))
             tmp.write("nuke.execute(nuke.toNode(\"%s\"),%d,%d,1,)\n" % (g_config.get('delivery', 'thumbnail_write_node'), thumb_frame, thumb_frame))
-            tmp.write("nuke.executeMultiple((%s),((%d,%d,1),))\n" % (s_exec_nodes, db_version_object.g_start_frame - 1, db_version_object.g_end_frame))
+            tmp.write("nuke.execute(nuke.toNode(\"%s\"),%d,%d,1,)\n" % (g_config.get('delivery', 'hires_write_node'), db_version_object.g_start_frame - 1, db_version_object.g_end_frame))
 
         save_file = os.path.join(os.path.expanduser('~'), 'pyscripts', os.path.basename(path))
         m_logger_object.info('Copied tmp Python script to %s'%save_file)
@@ -991,14 +991,14 @@ def transcode_plate():
     g_process_queue.put(vfxbot_request)
     return jsonify(vfxbot_request['data']), 200
 
-@app.route('/vfxbot/strip_imgseq', methods=['POST'])
-def strip_imgseq():
+@app.route('/vfxbot/imgseq_strip', methods=['POST'])
+def imgseq_strip():
     global g_process_queue, g_config, g_ihdb, g_proddb, g_log, g_imgseq_regexp, g_frame_regexp, g_shot_scope_regexp, \
         g_sequence_scope_regexp, g_show_scope_regexp, g_image_extensions, g_production_shot_tree, g_inhouse_shot_tree, \
         g_production_project_id, g_inhouse_project_id, g_thread_processing
     if not request.json:
         abort(400, 'Malformed or non-existant request. A valid POST request will have a filepath parameter, which '
-                   'is the path to an image sequence to convert, and an optional parameter overwrite. Default for '
+                   'is the path to an image sequence to strip, and an optional parameter overwrite. Default for '
                    'overwrite is True. Example: {"filepath":"/path/to/image/sequence.%04d.exr", "overwrite" : '
                    '"True"}')
     if not 'filepath' in request.json:
@@ -1015,7 +1015,7 @@ def strip_imgseq():
     fileext = os.path.splitext(filepath)[-1][1:]
     if fileext not in g_image_extensions:
         abort(400, 'File extension provided, %s, is not in the list of valid file extensions. Valid file extensions are %s.'%(fileext, str(g_image_extensions)))
-    g_log.debug('Inside transcode plate. Using filepath %s.'%filepath)
+    g_log.debug('Inside imgseq_strip(). Using filepath %s.'%filepath)
     imgseq_match = g_imgseq_regexp.search(filepath)
     imgseq_files = []
     b_file_not_found = False
@@ -1167,7 +1167,7 @@ def strip_imgseq():
                     dest_version_obj = dbversion
                     transcode_version_obj.g_dbid = dest_version_obj.g_dbid
 
-    vfxbot_request = {'type' : 'transcode_plate', 'filepath' : filepath,
+    vfxbot_request = {'type' : 'imgseq_strip', 'filepath' : filepath,
                                                   'data' : {'source_filepath': filepath, 'destination_version_id' : str(transcode_version_obj.g_dbid),
                                                             'destination_filepath' : transcode_version_obj.g_path_to_frames,
                                                             'overwrite' : b_overwrite, 'transcode_only' : b_transcode_only,
