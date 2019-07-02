@@ -817,7 +817,7 @@ def transcode_plate():
     fileext = os.path.splitext(filepath)[-1][1:]
     if fileext not in g_image_extensions:
         abort(400, 'File extension provided, %s, is not in the list of valid file extensions. Valid file extensions are %s.'%(fileext, str(g_image_extensions)))
-    g_log.debug('Inside transcode plate. Using filepath %s.'%filepath)
+    g_log.info('Inside transcode plate. Using filepath %s.'%filepath)
     imgseq_match = g_imgseq_regexp.search(filepath)
     imgseq_files = []
     b_file_not_found = False
@@ -825,7 +825,7 @@ def transcode_plate():
     last_frame = -1
     duration = 1
     if imgseq_match:
-        g_log.debug('%s is an image sequence.'%filepath)
+        g_log.info('%s is an image sequence.'%filepath)
         imgseq_glob = re.sub(g_imgseq_regexp, r'\1*\3', filepath)
         imgseq_files = sorted(glob.glob(imgseq_glob))
         if len(imgseq_files) == 0:
