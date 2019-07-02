@@ -948,8 +948,11 @@ def transcode_plate():
                 g_log.info('Using LUT file at %s.'%lut_file)
         else:
             if sequence:
+                g_log.info('Working on a sequence object...')
+                g_log.info(sequence)
                 dbsequence = db.fetch_sequence(sequence)
                 entity_type = 'Sequence'
+                g_log.info(dbsequence)
                 entity_id = dbsequence.g_dbid
                 transcode_version_obj.set_version_entity({'type': entity_type, 'id': entity_id})
         # now, get list of versions matching the name and for the specific entity
